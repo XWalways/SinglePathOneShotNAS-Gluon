@@ -5,12 +5,12 @@ import random
 import mxnet as mx
 import mxnet
 import numpy as np
-from blocks import Shufflenet, Shuffle_Xception
+from blocks import Shufflenet, Shuffle_Xception, Activation
 from mxnet import ndarray as F
 
 
 class ShuffleNetV2_OneShot(HybridBlock):
-    def __init__(self, input_size=224, n_class=1000, architecture=None, channels_idx=None, search=False):
+    def __init__(self, input_size=224, n_class=1000, architecture=None, channels_idx=None, act_type='relu', search=False):
         super(ShuffleNetV2_OneShot, self).__init__()
 
         assert input_size % 32 == 0
@@ -23,7 +23,7 @@ class ShuffleNetV2_OneShot(HybridBlock):
         self.first_conv = nn.HybridSequential(prefix='first_')
         self.first_conv.add(nn.Conv2D(input_channel, in_channels=3, kernel_size=3, strides=2, padding=1, use_bias=False))
         self.first_conv.add(nn.BatchNorm(in_channels=input_channel, momentum=0.1))
-        self.first_conv.add(nn.Activation('relu'))
+        self.first_conv.add(Activation(act_type))
         self.search = search
 
         self.features = nn.HybridSequential(prefix='features_')
@@ -46,16 +46,20 @@ class ShuffleNetV2_OneShot(HybridBlock):
 
                 if blockIndex == 0:
                     #print('Shuffle3x3')
-                    self.features[-1].add(Shufflenet(inp, outp, mid_channels=mid_channels, ksize=3, stride=stride, search=self.search))
+                    self.features[-1].add(Shufflenet(inp, outp, mid_channels=mid_channels, ksize=3, stride=stride,
+                                                     act_type='relu', BatchNorm=nn.BatchNorm, search=self.search))
                 elif blockIndex == 1:
                     #print('Shuffle5x5')
-                    self.features[-1].add(Shufflenet(inp, outp, mid_channels=mid_channels, ksize=5, stride=stride, search=self.search))
+                    self.features[-1].add(Shufflenet(inp, outp, mid_channels=mid_channels, ksize=5, stride=stride,
+                                                     act_type='relu', BatchNorm=nn.BatchNorm, search=self.search))
                 elif blockIndex == 2:
                     #print('Shuffle7x7')
-                    self.features[-1].add(Shufflenet(inp, outp, mid_channels=mid_channels, ksize=7, stride=stride, search=self.search))
+                    self.features[-1].add(Shufflenet(inp, outp, mid_channels=mid_channels, ksize=7, stride=stride,
+                                                     act_type='relu', BatchNorm=nn.BatchNorm, search=self.search))
                 elif blockIndex == 3:
                     #print('Xception')
-                    self.features[-1].add(Shuffle_Xception(inp, outp, mid_channels=mid_channels, stride=stride, search=self.search))
+                    self.features[-1].add(Shuffle_Xception(inp, outp, mid_channels=mid_channels, stride=stride,
+                                                           act_type='relu', BatchNorm=nn.BatchNorm, search=self.search))
                 else:
                     raise NotImplementedError
                 input_channel = output_channel
@@ -63,31 +67,23 @@ class ShuffleNetV2_OneShot(HybridBlock):
         self.conv_last = nn.HybridSequential(prefix='last_')
         self.conv_last.add(nn.Conv2D(self.stage_out_channels[-1], in_channels=input_channel, kernel_size=1, strides=1, padding=0, use_bias=False))
         self.conv_last.add(nn.BatchNorm(in_channels=self.stage_out_channels[-1],momentum=0.1))
-        self.conv_last.add(nn.Activation('relu'))
+        self.conv_last.add(Activation(act_type))
 
-        self.globalpool = nn.AvgPool2D(7)
+        self.globalpool = nn.GlobalAvgPool2D()
         self.output = nn.HybridSequential(prefix='output_')
         with self.output.name_scope():
             self.output.add(
                 nn.Dropout(0.1),
                 nn.Dense(units=n_class, in_units=self.stage_out_channels[-1], use_bias=False)
-                #nn.Conv2D(n_class, in_channels=self.stage_out_channels[-1], kernel_size=1, strides=1, padding=0, use_bias=True),
-                #nn.Flatten()
             )
-        #self.dropout = nn.Dropout(0.1)
-        #self.classifier = nn.Dense(units=n_class, in_units=self.stage_out_channels[-1], use_bias=False)
         self._initialize()
 
-    def _initialize(self, force_reinit=True, ctx=mx.cpu(), dtype='float32'):
+    def _initialize(self, force_reinit=True, ctx=mx.cpu()):
         for k, v in self.collect_params().items():
             if 'conv' in k:
                 if 'weight' in k:
-                    if 'first' in k: #or 'last' in k or 'squeeze' in k or 'excitation' in k or 'output' in k:
+                    if 'first' in k:
                         v.initialize(mx.init.Normal(0.01), force_reinit=force_reinit, ctx=ctx)
-                    elif 'transpose' in k:
-                        v.initialize(mx.init.Normal(0.01), force_reinit=force_reinit, ctx=ctx)
-                        v.set_data(nd.cast(generate_transpose_conv_kernel(v.shape[0]), dtype=dtype))
-                        v.grad_req = 'null'
                     else:
                         v.initialize(mx.init.Normal(1.0 / v.shape[1]), force_reinit=force_reinit, ctx=ctx)
                 if 'bias' in k:
@@ -105,18 +101,22 @@ class ShuffleNetV2_OneShot(HybridBlock):
                     v.initialize(mx.init.Constant(0), force_reinit=force_reinit, ctx=ctx)
 
     def hybrid_forward(self, F, x, *args, **kwargs):
-        #import pdb
-        #pdb.set_trace()
         x = self.first_conv(x)
         x = self.features(x)
         x = self.conv_last(x)
         x = self.globalpool(x)
         x = self.output(x)
-        #x = self.dropout(x)
-        #x = self.classifier(x)
         return x
 
 def get_flops(model):
+    '''
+    # use the package mxop
+    inputs = nd.random.uniform(-1, 1, shape=(1, 3, 224, 224), ctx=mx.cpu(0))
+    from mxop.gluon import count_ops
+    op_counter = count_ops(model, input_size=(1,3,224,224))
+    return op_counter
+    '''
+
     list_conv = []
     def conv_hook(self, input, output):
         batch_size, input_channels, input_height, input_width = input[0].shape
@@ -174,21 +174,23 @@ def get_flops(model):
                 op.register_forward_hook(conv_hook)
             if isinstance(op, nn.Dense):
                 op.register_forward_hook(dense_hook)
-
     get(model)
     input = nd.random.uniform(-1, 1, shape=(1, 3, 224, 224), ctx=mx.cpu(0))
     out = model(input)
     total_flops = sum(sum(i) for i in [list_conv, list_dense])
     return total_flops
 
+
 def get_cand_flops(cand, channels_idx):
-    model = ShuffleNetV2_OneShot(input_size=224, n_class=1000, architecture=cand, channels_idx=channels_idx, search=False)
+    model = ShuffleNetV2_OneShot(input_size=224, n_class=1000, architecture=cand, channels_idx=channels_idx, act_type='relu', search=False)
+    #print(model)
     return get_flops(model)
 
 def main():
     for i in range(4):
         #cand = (0,1,2,3,0,1,2,3,0,1,2,3,0,1,2,3,0,1,2,3)
-        print(i, get_cand_flops((i, )*20, (4, )*20))
+        print(i, get_cand_flops((i,)*20, (4, )*20))
+
 
 if __name__ == '__main__':
     main()

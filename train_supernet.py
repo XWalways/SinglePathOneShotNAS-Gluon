@@ -17,6 +17,9 @@ os.environ['MXNET_SAFE_ACCUMULATION'] = '1'
 os.environ['MXNET_CUDNN_AUTOTUNE_DEFAULT'] = '0'
 os.environ['MXNET_ENABLE_GPU_P2P'] = '0'
 
+stage_repeats = [4, 8, 4, 4]
+stage_out_channels = [64, 160, 320, 640]
+candidate_scales = [0.2, 0.4, 0.6, 0.8, 1.0, 1.2, 1.4, 1.6, 1.8, 2.0]
 
 # CLI
 def parse_args():
@@ -143,7 +146,7 @@ def main():
     optimizer_params = {'wd': opt.wd, 'momentum': opt.momentum, 'lr_scheduler': lr_scheduler}
     if opt.dtype != 'float32':
         optimizer_params['multi_precision'] = True
-    net = ShuffleNetV2_OneShot(use_all_blocks=False, search=True)
+    net = ShuffleNetV2_OneShot()
     net.hybridize()
     net.cast(opt.dtype)
     if opt.resume_params is not '':
@@ -339,9 +342,9 @@ def main():
                 print('Random Block Candidate: ', cand)
                 cand = nd.array(cand)
                 cand = cand.astype(opt.dtype, copy=False)
-                channel = get_random_cand(10)
-                print('Random Channel Candidate: ', channel)
-                channel_mask = get_channel_mask(channel, opt.dtype)
+                channel = (9,)*20
+                print('Defined Channel Choice: ', channel)
+                channel_mask = get_channel_mask(channel, stage_repeats, stage_out_channels, candidate_scales, dtype=opt.dtype)
                 #print(channel_mask)
                 data, label = batch_fn(batch, ctx)
                 if opt.mixup:
@@ -401,8 +404,8 @@ def main():
             cand = nd.array(cand)
             cand = cand.astype(opt.dtype, copy=False)
 
-            channel = get_random_cand(10)
-            channel_mask = get_channel_mask(channel, opt.dtype)
+            channel = (9,)*20
+            channel_mask = get_channel_mask(channel, stage_repeats, stage_out_channels, candidate_scales, dtype=opt.dtype)
 
             top1_val_acc, top5_val_acc = test(ctx, val_data, cand, channel_mask)
             sw.add_scalar(tag='val_acc_curves', value=('valid_acc_value', top1_val_acc), global_step=epoch)
