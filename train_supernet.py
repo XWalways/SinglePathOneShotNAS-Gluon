@@ -87,9 +87,9 @@ def parse_args():
     #------------------------------------------save and log----------------------------------------------------------
     parser.add_argument('--save-frequency', type=int, default=10,
                         help='frequency of model saving.')
-    parser.add_argument('--save-dir', type=str, default='supernet_all_random_params',
+    parser.add_argument('--save-dir', type=str, default='supernet_params',
                         help='directory of saved models')
-    parser.add_argument('--log-dir', type=str, default='supernet_all_random_logs',
+    parser.add_argument('--log-dir', type=str, default='supernet_logs',
                         help='directory of saved logs')
     parser.add_argument('--resume-epoch', type=int, default=0,
                         help='epoch to resume training from.')
