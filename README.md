@@ -7,6 +7,16 @@ Official [Pytorch](https://github.com/megvii-model/SinglePathOneShot) Implementa
 [Single Path One-Shot Neural Architecture Search with Uniform Sampling](https://arxiv.org/abs/1904.00420)
 
 
+## Prepare
+
+`pip install mxnet-cu101mkl`(depend on you CUDA version)
+
+`pip install gluoncv`
+
+`pip install mxboard`
+
+`pip install mxop`(Optional)
+
 ## SuperNet
 
 Train supernet with:`sh train_supernet.sh`
