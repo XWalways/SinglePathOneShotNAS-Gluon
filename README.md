@@ -28,7 +28,7 @@ Remark: Change `data-dir` or `rec-train`& `rec-train-idx` & `rec-val` & `rec-val
 
 Search subnet with flops/params limits:`sh search.sh`
 
-Remark: Change dataset dir in `search.py` or `search.sh` before searching, change flops/params limit if you like.
+Remark: Change `resume-params` in `search.py` or `search.sh`, also you should change dataset dir in `search.py` or `search.sh` before searching, change flops/params limit if you like.
 
 ## Evaluate
 
