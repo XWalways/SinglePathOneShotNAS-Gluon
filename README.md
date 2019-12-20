@@ -17,6 +17,10 @@ Official [Pytorch](https://github.com/megvii-model/SinglePathOneShot) Implementa
 
 `pip install mxop`(Optional)
 
+`cd ROOT && mkdir data`
+
+`cd data && ln -s path/to/imagenet_image_dir/ ./` or `cd data && ln -s path/to/imagenet_rec_dir/ ./`
+
 ## SuperNet
 
 Train supernet with:`sh train_supernet.sh`
