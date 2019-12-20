@@ -46,6 +46,8 @@ https://gluon-cv.mxnet.io/model_zoo/classification.html
 
 https://github.com/CanyonWind/Single-Path-One-Shot-NAS-MXNet
 
+https://github.com/hey-yahei/OpSummary.MXNet
+
 
 
 
