@@ -14,7 +14,7 @@ import mxnet as mx
 from mxnet import gluon
 from mxnet.gluon import nn
 from mxnet import nd
-from flops import get_cand_flops
+from flops_params import get_cand_flops_params
 from network import ShuffleNetV2_OneShot, get_channel_mask
 import random
 import pickle
@@ -236,7 +236,7 @@ class EvolutionSearcher(object):
             return False
 
         if 'flops' not in info:
-            info['flops'] = get_cand_flops(cand[0], cand[1])
+            info['flops'], info['params'] = get_cand_flops_params(cand[0], cand[1])
 
         print(cand, info['flops'])
 
