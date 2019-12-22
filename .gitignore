@@ -104,4 +104,4 @@ venv.bak/
 *.swp
 .cache/
 
-./supernet_params/
+supernet_params/
