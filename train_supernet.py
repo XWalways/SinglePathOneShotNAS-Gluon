@@ -293,7 +293,23 @@ def main():
             smoothed.append(res)
         return smoothed
 
-    def test(ctx, val_data, cand, channel_mask):
+    def test(net, batch_fn, ctx, train_data, val_data, cand, channel_mask, update_images=20000, update_bn=False):
+        if update_bn:
+            if opt.use_rec:
+                train_data.reset()
+            net.cast('float32')
+            for k,v in net._children.items():
+                if isinstance(v, BatchNormNAS):
+                    v.inference_update_stat = True
+            for i,batch in enumerate(train_data):
+                if (i+1) * opt.batch_size * len(ctx) >= update_images:
+                    break
+                data, _ = batch_fn(train_data)
+                _ = [net(X.astype('float32', copy=False), cand.as_in_context(X.context).astype('float32',copy=False), channel_mask.as_in_context(X.context).astype('float32',copy=False)) for X in data]
+            for k,v in net._children.items():
+                if isinstance(v, BatchNormNAS):
+                    v.inference_update_stat = False
+            net.cast(opt.dtype)
         if opt.use_rec:
             val_data.reset()
         acc_top1.reset()
@@ -338,6 +354,7 @@ def main():
             btic = time.time()
             get_random_cand = lambda x: tuple(np.random.randint(x) for i in range(20))
             for i, batch in enumerate(train_data):
+                # Generate channel mask and random block choice
                 cand = get_random_cand(4)
                 print('Random Block Candidate: ', cand)
                 cand = nd.array(cand)
@@ -346,6 +363,7 @@ def main():
                 print('Defined Channel Choice: ', channel)
                 channel_mask = get_channel_mask(channel, stage_repeats, stage_out_channels, candidate_scales, dtype=opt.dtype)
                 #print(channel_mask)
+
                 data, label = batch_fn(batch, ctx)
                 if opt.mixup:
                     lam = np.random.beta(opt.mixup_alpha, opt.mixup_alpha)
@@ -400,6 +418,7 @@ def main():
             train_metric_name, train_metric_score = train_metric.get()
             throughput = int(batch_size * i /(time.time() - tic))
 
+            # Generate channel mask and random block choice
             cand = get_random_cand(4)
             cand = nd.array(cand)
             cand = cand.astype(opt.dtype, copy=False)
@@ -407,7 +426,7 @@ def main():
             channel = (9,)*20
             channel_mask = get_channel_mask(channel, stage_repeats, stage_out_channels, candidate_scales, dtype=opt.dtype)
 
-            top1_val_acc, top5_val_acc = test(ctx, val_data, cand, channel_mask)
+            top1_val_acc, top5_val_acc = test(net, batch_fn, ctx, train_data, val_data, cand, channel_mask, update_images=20000, update_bn=False)
             sw.add_scalar(tag='val_acc_curves', value=('valid_acc_value', top1_val_acc), global_step=epoch)
             logger.info('[Epoch %d] training: %s=%f'%(epoch, train_metric_name, train_metric_score))
             logger.info('[Epoch %d] speed: %d samples/sec\ttime cost: %f'%(epoch, throughput, time.time()-tic))

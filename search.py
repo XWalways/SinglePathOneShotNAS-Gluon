@@ -16,6 +16,7 @@ from mxnet.gluon import nn
 from mxnet import nd
 from flops_params import get_cand_flops_params
 from network import ShuffleNetV2_OneShot, get_channel_mask
+from blocks import BatchNormNAS
 import random
 import pickle
 import numpy as np
@@ -23,6 +24,11 @@ sys.setrecursionlimit(10000)
 os.environ['MXNET_SAFE_ACCUMULATION'] = '1'
 os.environ['MXNET_CUDNN_AUTOTUNE_DEFAULT'] = '0'
 os.environ['MXNET_ENABLE_GPU_P2P'] = '0'
+
+stage_repeats = [4, 8, 4, 4]
+stage_out_channels = [64, 160, 320, 640]
+candidate_scales = [0.2, 0.4, 0.6, 0.8, 1.0, 1.2, 1.4, 1.6, 1.8, 2.0]
+
 
 parser = argparse.ArgumentParser(description='Searching')
 parser.add_argument('--log-dir', type=str, default='search.log')
@@ -33,10 +39,10 @@ parser.add_argument('--population-num', type=int, default=50)
 parser.add_argument('--m_prob', type=float, default=0.1)
 parser.add_argument('--crossover-num', type=int, default=25)
 parser.add_argument('--mutation-num', type=int, default=25)
-parser.add_argument('--flops-limit', type=float, default=660 * 1e6)
+parser.add_argument('--flops-limit', type=float, default=330 * 1e6)
 parser.add_argument('--batch-size', type=int, default=256)
 parser.add_argument('--random-seed', type=int, default=2)
-parser.add_argument('--resume-params', type=str, default='supernet_params/0.7371-supernet_imagenet-115-best.params')
+parser.add_argument('--resume-params', type=str, default='supernet_params/0.7459-supernet_imagenet-117-best.params')
 parser.add_argument('--checkpoint-name', type=str, default='search_info.pkl')
 parser.add_argument('--gpus', type=str, default='0,1,2,3,4,5,6,7')
 parser.add_argument('--num-workers', dest='num_workers', type=int, default=60)
@@ -58,6 +64,7 @@ logger.setLevel(logging.INFO)
 logger.addHandler(filehandler)
 logger.addHandler(streamhandler)
 logger.info(args)
+
 choice = lambda x: x[np.random.randint(len(x))] if isinstance(
     x, tuple) else choice(tuple(x))
 
@@ -185,7 +192,7 @@ class EvolutionSearcher(object):
         else:
             self.train_data, self.val_data, self.batch_fn = get_data_loader(self.args.data_dir, batch_size, self.args.num_workers)
 
-        self.model = ShuffleNetV2_OneShot(use_all_blocks=False, search=True)
+        self.model = ShuffleNetV2_OneShot(search=True)
         self.model.collect_params().load(self.args.resume_params, ctx=self.context, cast_dtype=True, dtype_source='saved')
 
         self.memory = []
@@ -196,7 +203,7 @@ class EvolutionSearcher(object):
 
         self.nr_layer = 20
         self.nr_state = 4
-        self.channel_state = 10
+        self.channel_state = 10# len(candidate_scales)
 
     def save_checkpoint(self):
         if not os.path.exists(self.args.log_dir):
@@ -300,7 +307,7 @@ class EvolutionSearcher(object):
             for i in range(self.nr_layer):
                 if np.random.random_sample() < m_prob:
                     cand[0][i] = np.random.randint(self.nr_state)
-                    cand[1][i] = 9 #np.random.randint(self.channel_state)
+                    cand[1][i] = 4 #np.random.randint(self.channel_state) # if you want to search number of channels
             return (tuple(cand[0]), tuple(cand[1]))
 
         cand_iter = self.stack_random_cand(random_func)
@@ -341,35 +348,30 @@ class EvolutionSearcher(object):
         logger.info('crossover_num = {}'.format(len(res)))
         return res
 
-    def get_cand_err(self, cand):
-        if hasattr(self.val_data, 'reset'):
-            self.val_data.reset()
-        #for k, v in model.collect_params('.*running_mean|.*running_var').items():
-            #v.set_data(mx.nd.zeors_like(v.data()))
-        #logger.info('train subnet bn with training set (BN sanitize) ....')
-
-        '''
-        L = gluon.loss.SoftmaxCrossEntropyLoss(sparse_label=True)
-        train_metric = mx.metric.Accuracy()
-        train_metric.reset()
-        btic = time.time()
-        for i, batch in enumerate(train_data):
-            data, label = batch_fn(batch, ctx)
-            with ag.record():
-                outputs = [self.mdoel(X.astype(self.args.dtype, copy=False), cand) for X in data]
-                loss = [L(yhat, y.astype(self.args.dtype, copy=False)) for yhat, y in zip(outputs, label)]
-            for l in loss:
-                l.backward()
-            trainer.step(batch_size)
-            train_metric.update(label, outputs)
-            if not (i + 1) % args.log_interval:
-                train_metric_name, train_metric_score = train_metric.get()
-                logger.info('Epoch[%d] Batch [%d]\tSpeed: %f samples/sec\t%s=%f\tlr=%f' % (
-                    epoch, i, batch_size * self.args.log_interval / (time.time() - btic),
-                    train_metric_name, train_metric_score, trainer.learning_rate))
-        '''
+    def get_cand_err(self, cand, update_images=20000):
         architecture = mxnet.nd.array(cand[0]).astype(dtype=self.args.dtype, copy=False)
-        channel_mask = get_channel_mask(cand[1], dtype=self.args.dtype)
+        channel_mask = get_channel_mask(cand[1], stage_repeats, stage_out_channels, candidate_scales,
+                                        dtype=self.args.dtype)
+        # Update BN
+        if self.args.use_rec:
+            self.train_data.reset()
+            self.val_data.reset()
+            self.model.cast('float32')
+        for k,v in self.model._children.items():
+            if isinstance(v, BatchNormNAS):
+                v.inference_update_stat = True
+        for i,batch in enumerate(self.train_data):
+            if (i+1) * self.args.batch_size * len(self.context) >= update_images:
+                break
+            data, _ = self.batch_fn(batch, self.context)
+            _ = [self.model(X.astype('float32', copy=False), architecture.as_in_context(X.context).astype('float32',copy=False),
+                            channel_mask.as_in_context(X.context).astype('float32',copy=False)) for X in data]
+        for k,v in self.model._children.items():
+            if isinstance(v, BatchNormNAS):
+                v.inference_update_stat = False
+        self.model.cast(self.args.dtype)
+
+
         logger.info('starting subnet test....')
         acc_top1 = mx.metric.Accuracy()
         acc_top5 = mx.metric.TopKAccuracy(5)
@@ -377,7 +379,8 @@ class EvolutionSearcher(object):
         acc_top5.reset()
         for i, batch in enumerate(self.val_data):
             data, label = self.batch_fn(batch, self.context)
-            outputs = [self.model(X.astype(self.args.dtype, copy=False), architecture.as_in_context(X.context), channel_mask.as_in_context(X.context)) for X in data]
+            outputs = [self.model(X.astype(self.args.dtype, copy=False), architecture.as_in_context(X.context).astype(self.args.dtype,copy=False),
+                                  channel_mask.as_in_context(X.context).astype(self.args.dtype,copy=False)) for X in data]
             acc_top1.update(label, outputs)
             acc_top5.update(label, outputs)
         _, top1 = acc_top1.get()

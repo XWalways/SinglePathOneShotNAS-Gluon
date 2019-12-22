@@ -64,7 +64,7 @@ class ShuffleNetV2_OneShot(HybridBlock):
                 nn.Dropout(0.1),
                 nn.Dense(units=n_class, in_units=self.stage_out_channels[-1], use_bias=False)
             )
-            self._initialize()
+        
 
 
     def _initialize(self, force_reinit=True, ctx=mx.cpu()):
