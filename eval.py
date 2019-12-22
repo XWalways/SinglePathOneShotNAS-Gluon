@@ -43,6 +43,7 @@ def parse_args():
                         help='size of the input image size. default is 224')
     parser.add_argument('--crop-ratio', type=float, default=0.875,
                         help='Crop ratio during validation. default is 0.875')
+    parser.add_argument('--random-seed', type=int, default=2)
 
     #------------------------------------------------training HPs---------------------------------------------------
     parser.add_argument('--num-gpus', type=int, default=0,
@@ -175,7 +176,7 @@ def main():
         distillation = False
 
     # Two functions for reading data from record file or raw images
-    def get_data_rec(rec_train, rec_train_idx, rec_val, rec_val_idx, batch_size, num_workers):
+    def get_data_rec(rec_train, rec_train_idx, rec_val, rec_val_idx, batch_size, num_workers, seed):
         rec_train = os.path.expanduser(rec_train)
         rec_train_idx = os.path.expanduser(rec_train_idx)
         rec_val = os.path.expanduser(rec_val)
@@ -217,6 +218,9 @@ def main():
             saturation          = jitter_param,
             contrast            = jitter_param,
             pca_noise           = lighting_param,
+            seed                =seed,
+            seed_aug            =seed,
+            shuffle_chunk_seed  =seed,
         )
         val_data = mx.io.ImageRecordIter(
             path_imgrec         = rec_val,
@@ -277,7 +281,7 @@ def main():
     if opt.use_rec:
         train_data, val_data, batch_fn = get_data_rec(opt.rec_train, opt.rec_train_idx,
                                                     opt.rec_val, opt.rec_val_idx,
-                                                    batch_size, num_workers)
+                                                    batch_size, num_workers, opt.random_seed)
     else:
         train_data, val_data, batch_fn = get_data_loader(opt.data_dir, batch_size, num_workers)
 
