@@ -21,7 +21,7 @@ Official [Pytorch](https://github.com/megvii-model/SinglePathOneShot) Implementa
 
 ### Dataset
 
-`cd ROOT && mkdir data`
+`cd $ROOT && mkdir data`
 
 `cd data && ln -s path/to/imagenet_image_dir/ ./` or `cd data && ln -s path/to/imagenet_rec_dir/ ./`
 
