@@ -27,16 +27,13 @@ def parse_args():
     parser = argparse.ArgumentParser(description='Train a model for image classification.')
     parser.add_argument('--data-dir', type=str, default='./data/imagenet',
                         help='training and validation pictures to use.')
-    parser.add_argument('--rec-train', type=str,
-                        default='/mnt/WXRC0020/dataset/imagenet-1k/rec/mxnet-official/train.rec',
+    parser.add_argument('--rec-train', type=str, default='./data/rec/train.rec',
                         help='the training data')
-    parser.add_argument('--rec-train-idx', type=str,
-                        default='/mnt/WXRC0020/dataset/imagenet-1k/rec/mxnet-official/train.idx',
+    parser.add_argument('--rec-train-idx', type=str, default='./data/rec/train.idx',
                         help='the index of training data')
-    parser.add_argument('--rec-val', type=str, default='/mnt/WXRC0020/dataset/imagenet-1k/rec/mxnet-official/val.rec',
+    parser.add_argument('--rec-val', type=str, default='./data/rec/val.rec',
                         help='the validation data')
-    parser.add_argument('--rec-val-idx', type=str,
-                        default='/mnt/WXRC0020/dataset/imagenet-1k/rec/mxnet-official/val.idx',
+    parser.add_argument('--rec-val-idx', type=str, default='./data/rec/val.idx',
                         help='the index of validation data')
     parser.add_argument('--use-rec', action='store_true',
                         help='use image record iter for data input. default is false.')
