@@ -10,6 +10,7 @@ from gluoncv.data import imagenet
 from gluoncv.model_zoo import get_model
 from gluoncv.utils import makedirs, LRSequential, LRScheduler
 from network import ShuffleNetV2_OneShot, get_channel_mask
+from blocks import BatchNormNAS
 from mxboard import SummaryWriter
 import os
 
