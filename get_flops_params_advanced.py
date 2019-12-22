@@ -1,7 +1,8 @@
-from flops_params import ShuffleNetV2_OneShot
-
+#from flops_params import ShuffleNetV2_OneShot
+from subnet import ShuffleNetV2_OneShot
 def get_cand_flops(cand, channels_idx):
     model = ShuffleNetV2_OneShot(input_size=224, n_class=1000, architecture=cand, channels_idx=channels_idx, act_type='relu', search=False)
+    model._initialize()
     #print(model)
     return get_flops(model)
 
