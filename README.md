@@ -17,6 +17,10 @@ Official [Pytorch](https://github.com/megvii-model/SinglePathOneShot) Implementa
 
 `pip install mxboard`
 
+`pip install --extra-index-url https://developer.download.nvidia.com/compute/redist/cuda/10.0 nvidia-dali`
+
+`pip install horovod`
+
 `pip install mxop`(Optional)
 
 ### Dataset
