@@ -52,6 +52,7 @@ parser.add_argument('--rec-train-idx', type=str, default='./data/rec/train.idx')
 parser.add_argument('--rec-val', type=str, default='./data/rec/val.rec')
 parser.add_argument('--rec-val-idx', type=str, default='./data/rec/val.idx')
 parser.add_argument('--use-rec', action='store_true')
+parser.add_argument('--use-dali', action='store_true')
 parser.add_argument('--log-interval', type=int, default=50)
 parser.add_argument('--input-size', type=int, default=224)
 parser.add_argument('--crop-ratio', type=float, default=0.875)
@@ -68,6 +69,11 @@ logger.info(args)
 choice = lambda x: x[np.random.randint(len(x))] if isinstance(
     x, tuple) else choice(tuple(x))
 
+
+def batch_fn(batch, ctx):
+    data = gluon.utils.split_and_load(batch.data[0], ctx_list=ctx, batch_axis=0)
+    label = gluon.utils.split_and_load(batch.label[0], ctx_list=ctx, batch_axis=0)
+    return data, label
 
 def get_data_rec(rec_train, rec_train_idx, rec_val, rec_val_idx, batch_size, num_workers, seed):
     rec_train = os.path.expanduser(rec_train)
@@ -186,9 +192,22 @@ class EvolutionSearcher(object):
         num_gpus = len(self.args.gpus.split(','))
         batch_size = max(1, num_gpus) * self.args.batch_size
         if self.args.use_rec:
-            self.train_data, self.val_data, self.batch_fn = get_data_rec(self.args.rec_train, self.args.rec_train_idx,
-                                                          self.args.rec_val, self.args.rec_val_idx,
-                                                          batch_size, self.args.num_workers, self.args.random_seed)
+            if self.args.use_dali:
+                self.train_data = dali.get_data_rec((3, self.args.input_size, self.args.input_size), self.args.crop_ratio,
+                                           self.args.rec_train, self.args.rec_train_idx,
+                                           self.args.batch_size, num_workers=2, train=True, shuffle=True,
+                                           backend='dali-gpu', gpu_ids=[0,1], kv_store='nccl', dtype=opt.dtype,
+                                           input_layout='NCHW')
+                self.val_data = dali.get_data_rec((3, self.args.input_size, self.args.input_size), self.args.crop_ratio,
+                                           self.args.rec_val, self.args.rec_val_idx,
+                                           self.args.batch_size, num_workers=2, train=False, shuffle=False,
+                                           backend='dali-gpu', gpu_ids=[0,1], kv_store='nccl', dtype=opt.dtype,
+                                           input_layout='NCHW')
+                self.batch_fn = batch_fn
+            else:
+                self.train_data, self.val_data, self.batch_fn = get_data_rec(self.args.rec_train, self.args.rec_train_idx,
+                                                              self.args.rec_val, self.args.rec_val_idx,
+                                                              batch_size, self.args.num_workers, self.args.random_seed)
         else:
             self.train_data, self.val_data, self.batch_fn = get_data_loader(self.args.data_dir, batch_size, self.args.num_workers)
 

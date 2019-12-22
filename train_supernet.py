@@ -12,6 +12,7 @@ from gluoncv.utils import makedirs, LRSequential, LRScheduler
 from network import ShuffleNetV2_OneShot, get_channel_mask
 from blocks import BatchNormNAS
 from mxboard import SummaryWriter
+import dali
 import os
 
 os.environ['MXNET_SAFE_ACCUMULATION'] = '1'
@@ -38,6 +39,8 @@ def parse_args():
                         help='the index of validation data')
     parser.add_argument('--use-rec', action='store_true',
                         help='use image record iter for data input. default is false.')
+    parser.add_argument('--use-dali', action='store_true',
+                        help='use nvidia-dali dataloader or not. default is false.')
     parser.add_argument('--batch-size', type=int, default=64,
                         help='training batch size per device (CPU/GPU).')
     parser.add_argument('--input-size', type=int, default=224,
@@ -257,9 +260,26 @@ def main():
         return train_data, val_data, batch_fn
 
     if opt.use_rec:
-        train_data, val_data, batch_fn = get_data_rec(opt.rec_train, opt.rec_train_idx,
-                                                    opt.rec_val, opt.rec_val_idx,
-                                                    batch_size, num_workers)
+        if opt.use_dali:
+            train_data = dali.get_data_rec((3, opt.input_size, opt.input_size), opt.crop_ratio,
+                                           opt.rec_train, opt.rec_train_idx,
+                                           opt.batch_size, num_workers=2, train=True, shuffle=True,
+                                           backend='dali-gpu', gpu_ids=[0, 1], kv_store='nccl', dtype=opt.dtype,
+                                           input_layout='NCHW')
+            val_data = dali.get_data_rec((3, opt.input_size, opt.input_size), opt.crop_ratio,
+                                         opt.rec_val, opt.rec_val_idx,
+                                         opt.batch_size, num_workers=2, train=False, shuffle=False,
+                                         backend='dali-gpu', gpu_ids=[0, 1], kv_store='nccl', dtype=opt.dtype,
+                                         input_layout='NCHW')
+
+            def batch_fn(batch, ctx):
+                data = gluon.utils.split_and_load(batch[0], ctx_list=ctx, batch_axis=0)
+                label = gluon.utils.split_and_load(batch[1], ctx_list=ctx, batch_axis=0)
+                return data, label
+        else:
+            train_data, val_data, batch_fn = get_data_rec(opt.rec_train, opt.rec_train_idx,
+                                                          opt.rec_val, opt.rec_val_idx,
+                                                          batch_size, num_workers, opt.random_seed)
     else:
         train_data, val_data, batch_fn = get_data_loader(opt.data_dir, batch_size, num_workers)
 
