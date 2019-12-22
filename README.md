@@ -31,7 +31,7 @@ Train supernet with:`sh train_supernet.sh`
 
 Remark: Make sure your dataset path is correct before training.
 
-[supernet_train_accuracy](https://github.com/XWalways/SinglePathOneShotNAS-Gluon/tree/master/logs/train_accuracy_curves.svg)
+![supernet_train_accuracy](./logs/train_accuracy_curves.svg)
 
 
 ## Search
