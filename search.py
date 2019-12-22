@@ -22,7 +22,7 @@ import pickle
 import numpy as np
 sys.setrecursionlimit(10000)
 os.environ['MXNET_SAFE_ACCUMULATION'] = '1'
-os.environ['MXNET_CUDNN_AUTOTUNE_DEFAULT'] = '0'
+#os.environ['MXNET_CUDNN_AUTOTUNE_DEFAULT'] = '0'
 os.environ['MXNET_ENABLE_GPU_P2P'] = '0'
 
 stage_repeats = [4, 8, 4, 4]

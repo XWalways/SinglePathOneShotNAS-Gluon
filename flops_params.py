@@ -13,8 +13,9 @@ import mxnet
 import numpy as np
 from blocks import Shufflenet, Shuffle_Xception, Activation
 from mxnet import ndarray as F
+import subnet
 
-
+"""
 class ShuffleNetV2_OneShot(HybridBlock):
     def __init__(self, input_size=224, n_class=1000, architecture=None, channels_idx=None, act_type='relu', search=False):
         super(ShuffleNetV2_OneShot, self).__init__()
@@ -82,7 +83,7 @@ class ShuffleNetV2_OneShot(HybridBlock):
                 nn.Dropout(0.1),
                 nn.Dense(units=n_class, in_units=self.stage_out_channels[-1], use_bias=False)
             )
-        self._initialize()
+        #self._initialize()
 
     def _initialize(self, force_reinit=True, ctx=mx.cpu()):
         for k, v in self.collect_params().items():
@@ -113,7 +114,7 @@ class ShuffleNetV2_OneShot(HybridBlock):
         x = self.globalpool(x)
         x = self.output(x)
         return x
-
+"""
 def get_flops_params(model):
     '''
     # use the package mxop(https://github.com/hey-yahei/OpSummary.MXNet)
@@ -194,7 +195,8 @@ def get_flops_params(model):
 
 
 def get_cand_flops_params(cand, channels_idx):
-    model = ShuffleNetV2_OneShot(input_size=224, n_class=1000, architecture=cand, channels_idx=channels_idx, act_type='relu', search=False)
+    model = subnet.ShuffleNetV2_OneShot(input_size=224, n_class=1000, architecture=cand, channels_idx=channels_idx, act_type='relu', search=False)
+    model._initialize()
     #print(model)
     return get_flops_params(model)
 

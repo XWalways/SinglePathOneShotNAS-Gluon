@@ -9,8 +9,8 @@ from mxnet.gluon.data.vision import transforms
 from gluoncv.data import imagenet
 from gluoncv.model_zoo import get_model
 from gluoncv.utils import makedirs, LRSequential, LRScheduler
-from network import ShuffleNetV2_OneShot, get_channel_mask
-from blocks import BatchNormNAS
+from subnet import ShuffleNetV2_OneShot
+from flops_params import get_cand_flops_params
 from mxboard import SummaryWriter
 import os
 
@@ -18,9 +18,8 @@ os.environ['MXNET_SAFE_ACCUMULATION'] = '1'
 #os.environ['MXNET_CUDNN_AUTOTUNE_DEFAULT'] = '0'
 os.environ['MXNET_ENABLE_GPU_P2P'] = '0'
 
-stage_repeats = [4, 8, 4, 4]
-stage_out_channels = [64, 160, 320, 640]
-candidate_scales = [0.2, 0.4, 0.6, 0.8, 1.0, 1.2, 1.4, 1.6, 1.8, 2.0]
+# The searched subnet
+cand = ((2, 1, 0, 1, 2, 0, 2, 0, 2, 0, 2, 3, 0, 0, 0, 0, 3, 2, 3, 3), (4,)*20)
 
 # CLI
 def parse_args():
@@ -28,13 +27,16 @@ def parse_args():
     parser = argparse.ArgumentParser(description='Train a model for image classification.')
     parser.add_argument('--data-dir', type=str, default='./data/imagenet',
                         help='training and validation pictures to use.')
-    parser.add_argument('--rec-train', type=str, default='./data/rec/train.rec',
+    parser.add_argument('--rec-train', type=str,
+                        default='/mnt/WXRC0020/dataset/imagenet-1k/rec/mxnet-official/train.rec',
                         help='the training data')
-    parser.add_argument('--rec-train-idx', type=str, default='./data/rec/train.idx',
+    parser.add_argument('--rec-train-idx', type=str,
+                        default='/mnt/WXRC0020/dataset/imagenet-1k/rec/mxnet-official/train.idx',
                         help='the index of training data')
-    parser.add_argument('--rec-val', type=str, default='./data/rec/val.rec',
+    parser.add_argument('--rec-val', type=str, default='/mnt/WXRC0020/dataset/imagenet-1k/rec/mxnet-official/val.rec',
                         help='the validation data')
-    parser.add_argument('--rec-val-idx', type=str, default='./data/rec/val.idx',
+    parser.add_argument('--rec-val-idx', type=str,
+                        default='/mnt/WXRC0020/dataset/imagenet-1k/rec/mxnet-official/val.idx',
                         help='the index of validation data')
     parser.add_argument('--use-rec', action='store_true',
                         help='use image record iter for data input. default is false.')
@@ -46,8 +48,6 @@ def parse_args():
                         help='Crop ratio during validation. default is 0.875')
 
     #------------------------------------------------training HPs---------------------------------------------------
-    parser.add_argument('--mode', type=str,
-                        help='mode in which to train the model. options are symbolic, imperative, hybrid')
     parser.add_argument('--num-gpus', type=int, default=0,
                         help='number of gpus to use.')
     parser.add_argument('-j', '--num-data-workers', dest='num_workers', default=4, type=int,
@@ -86,13 +86,19 @@ def parse_args():
                         help='use label smoothing or not in training. default is false.')
     parser.add_argument('--no-wd', action='store_true',
                         help='whether to remove weight decay on bias, and beta/gamma for batchnorm layers.')
+    parser.add_argument('--teacher', type=str, default=None,
+                        help='teacher model for distillation training')
+    parser.add_argument('--temperature', type=float, default=20,
+                        help='temperature parameter for distillation teacher model')
+    parser.add_argument('--hard-weight', type=float, default=0.5,
+                        help='weight for the loss of one-hot label for distillation training')
 
     #------------------------------------------save and log----------------------------------------------------------
     parser.add_argument('--save-frequency', type=int, default=10,
                         help='frequency of model saving.')
-    parser.add_argument('--save-dir', type=str, default='supernet_params',
+    parser.add_argument('--save-dir', type=str, default='subnet_params',
                         help='directory of saved models')
-    parser.add_argument('--log-dir', type=str, default='supernet_logs',
+    parser.add_argument('--log-dir', type=str, default='subnet_logs',
                         help='directory of saved logs')
     parser.add_argument('--resume-epoch', type=int, default=0,
                         help='epoch to resume training from.')
@@ -102,7 +108,7 @@ def parse_args():
                         help='path of trainer state to load from.')
     parser.add_argument('--log-interval', type=int, default=50,
                         help='Number of batches to wait before logging.')
-    parser.add_argument('--logging-file', type=str, default='train_supernet_imagenet.log',
+    parser.add_argument('--logging-file', type=str, default='train_subnet_imagenet.log',
                         help='name of training log file')
     opt = parser.parse_args()
     return opt
@@ -149,12 +155,27 @@ def main():
     optimizer_params = {'wd': opt.wd, 'momentum': opt.momentum, 'lr_scheduler': lr_scheduler}
     if opt.dtype != 'float32':
         optimizer_params['multi_precision'] = True
-    net = ShuffleNetV2_OneShot()
+    net = ShuffleNetV2_OneShot(input_size=224, n_class=1000, architecture=cand[0],
+                               channels_idx=cand[1], act_type='relu', search=False)# define a specific subnet
+
+    #compute the flops and params of the subnet
+    logger.info("The FLOPs of the subnet is {}".format(get_cand_flops_params(cand[0], cand[1])[0]))
+    logger.info("The Params of the subnet is {}".format(get_cand_flops_params(cand[0], cand[1])[1]))
+
     net.cast(opt.dtype)
-    if opt.mode == 'hybrid':
-        net.hybridize()
+    net.hybridize()
+
     if opt.resume_params is not '':
         net.load_parameters(opt.resume_params, ctx = context)
+
+    # teacher model for distillation training
+    if opt.teacher is not None and opt.hard_weight < 1.0:
+        teacher_name = opt.teacher
+        teacher = get_model(teacher_name, pretrained=True, classes=classes, ctx=context)
+        teacher.cast(opt.dtype)
+        distillation = True
+    else:
+        distillation = False
 
     # Two functions for reading data from record file or raw images
     def get_data_rec(rec_train, rec_train_idx, rec_val, rec_val_idx, batch_size, num_workers):
@@ -297,23 +318,7 @@ def main():
             smoothed.append(res)
         return smoothed
 
-    def test(net, batch_fn, ctx, train_data, val_data, cand, channel_mask, update_images=20000, update_bn=False):
-        if update_bn:
-            if opt.use_rec:
-                train_data.reset()
-            net.cast('float32')
-            for k,v in net._children.items():
-                if isinstance(v, BatchNormNAS):
-                    v.inference_update_stat = True
-            for i,batch in enumerate(train_data):
-                if (i+1) * opt.batch_size * len(ctx) >= update_images:
-                    break
-                data, _ = batch_fn(train_data)
-                _ = [net(X.astype('float32', copy=False), cand.as_in_context(X.context).astype('float32',copy=False), channel_mask.as_in_context(X.context).astype('float32',copy=False)) for X in data]
-            for k,v in net._children.items():
-                if isinstance(v, BatchNormNAS):
-                    v.inference_update_stat = False
-            net.cast(opt.dtype)
+    def test(net, batch_fn, ctx, val_data):
         if opt.use_rec:
             val_data.reset()
         acc_top1.reset()
@@ -345,7 +350,13 @@ def main():
         else:
             sparse_label_loss = True
 
-        L = gluon.loss.SoftmaxCrossEntropyLoss(sparse_label=sparse_label_loss)
+        if distillation:
+            L = gcv.loss.DistillationSoftmaxCrossEntropyLoss(temperature=opt.temperature,
+                                                             hard_weight=opt.hard_weight,
+                                                             sparse_label=sparse_label_loss)
+        else:
+            L = gluon.loss.SoftmaxCrossEntropyLoss(sparse_label=sparse_label_loss)
+
 
         best_val_score = 0
         iteration = 0
@@ -356,17 +367,8 @@ def main():
                 train_data.reset()
             train_metric.reset()
             btic = time.time()
-            get_random_cand = lambda x: tuple(np.random.randint(x) for i in range(20))
+
             for i, batch in enumerate(train_data):
-                # Generate channel mask and random block choice
-                cand = get_random_cand(4)
-                print('Random Block Candidate: ', cand)
-                cand = nd.array(cand)
-                cand = cand.astype(opt.dtype, copy=False)
-                channel = (9,)*20
-                print('Defined Channel Choice: ', channel)
-                channel_mask = get_channel_mask(channel, stage_repeats, stage_out_channels, candidate_scales, dtype=opt.dtype)
-                #print(channel_mask)
 
                 data, label = batch_fn(batch, ctx)
                 if opt.mixup:
@@ -385,15 +387,24 @@ def main():
                     hard_label = label
                     label = smooth(label, classes)
 
+                if distillation:
+                    teacher_prob = [nd.softmax(teacher(X.astype(opt.dtype, copy=False)) / opt.temperature) \
+                                    for X in data]
+
                 with ag.record():
-                    outputs = [net(X.astype(opt.dtype, copy=False), cand.as_in_context(X.context), channel_mask.as_in_context(X.context)) for X in data]
-                    loss = [L(yhat, y.astype(opt.dtype, copy=False)) for yhat, y in zip(outputs, label)]
+                    outputs = [net(X.astype(opt.dtype, copy=False)) for X in data]
+                    if distillation:
+                        loss = [L(yhat.astype('float32', copy=False),
+                                  y.astype('float32', copy=False),
+                                  p.astype('float32', copy=False)) for yhat, y, p in zip(outputs, label, teacher_prob)]
+                    else:
+                        loss = [L(yhat, y.astype(opt.dtype, copy=False)) for yhat, y in zip(outputs, label)]
                 for l in loss:
                     l.backward()
                 sw.add_scalar(tag='train_loss', value=sum([l.sum().asscalar() for l in loss]) / len(loss),
                               global_step=iteration)
 
-                trainer.step(batch_size, ignore_stale_grad=True)
+                trainer.step(batch_size)
 
                 if opt.mixup:
                     output_softmax = [nd.SoftmaxActivation(out.astype('float32', copy=False)) \
@@ -422,34 +433,32 @@ def main():
             train_metric_name, train_metric_score = train_metric.get()
             throughput = int(batch_size * i /(time.time() - tic))
 
-            # Generate channel mask and random block choice
-            cand = get_random_cand(4)
-            cand = nd.array(cand)
-            cand = cand.astype(opt.dtype, copy=False)
 
-            channel = (9,)*20
-            channel_mask = get_channel_mask(channel, stage_repeats, stage_out_channels, candidate_scales, dtype=opt.dtype)
 
-            top1_val_acc, top5_val_acc = test(net, batch_fn, ctx, train_data, val_data, cand, channel_mask, update_images=20000, update_bn=False)
+            top1_val_acc, top5_val_acc = test(net, batch_fn, ctx, val_data)
             sw.add_scalar(tag='val_acc_curves', value=('valid_acc_value', top1_val_acc), global_step=epoch)
-            logger.info('[Epoch %d] training: %s=%f'%(epoch, train_metric_name, train_metric_score))
-            logger.info('[Epoch %d] speed: %d samples/sec\ttime cost: %f'%(epoch, throughput, time.time()-tic))
-            logger.info('[Epoch %d] validation: top1_acc=%f top5_acc=%f'%(epoch, top1_val_acc, top5_val_acc))
+            logger.info('Epoch [%d] training: %s=%f'%(epoch, train_metric_name, train_metric_score))
+            logger.info('Epoch [%d] speed: %d samples/sec\ttime cost: %f'%(epoch, throughput, time.time()-tic))
+            logger.info('Epoch [%d] validation: top1_acc=%f top5_acc=%f'%(epoch, top1_val_acc, top5_val_acc))
 
             if top1_val_acc > best_val_score:
                 best_val_score = top1_val_acc
-                net.collect_params().save('%s/%.4f-supernet_imagenet-%d-best.params'%(save_dir, best_val_score, epoch))
-                trainer.save_states('%s/%.4f-supernet_imagenet-%d-best.states'%(save_dir, best_val_score, epoch))
+                net.collect_params().save('%s/%.4f-subnet_imagenet-%d-best.params'%(save_dir, best_val_score, epoch))
+                trainer.save_states('%s/%.4f-subnet_imagenet-%d-best.states'%(save_dir, best_val_score, epoch))
 
             if save_frequency and save_dir and (epoch + 1) % save_frequency == 0:
-                net.collect_params().save('%s/supernet_imagenet-%d.params'%(save_dir, epoch))
-                trainer.save_states('%s/supernet_imagenet-%d.states'%(save_dir, epoch))
+                net.collect_params().save('%s/subnet_imagenet-%d.params'%(save_dir, epoch))
+                trainer.save_states('%s/subnet_imagenet-%d.states'%(save_dir, epoch))
 
         sw.close()
         if save_frequency and save_dir:
-            net.collect_params().save('%s/supernet_imagenet-%d.params'%(save_dir, opt.num_epochs-1))
-            trainer.save_states('%s/supernet_imagenet-%d.states'%(save_dir, opt.num_epochs-1))
+            net.collect_params().save('%s/subnet_imagenet-%d.params'%(save_dir, opt.num_epochs-1))
+            trainer.save_states('%s/subnet_imagenet-%d.states'%(save_dir, opt.num_epochs-1))
 
+
+    net.hybridize(static_alloc=True, static_shape=True)
+    if distillation:
+        teacher.hybridize(static_alloc=True, static_shape=True)
     train(context)
 
 if __name__ == '__main__':
