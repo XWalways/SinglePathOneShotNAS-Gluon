@@ -31,7 +31,17 @@ Train supernet with:`sh train_supernet.sh`
 
 Remark: Make sure your dataset path is correct before training.
 
+Train_Accuracy_Curves:
+
 ![supernet_train_accuracy](./logs/train_accuracy_curves.svg)
+
+Train_Loss_Curves:
+
+![supernet_train_loss](./logs/train_loss.svg)
+
+Val_Accuracy_Curves:
+
+![supernet_val_accuracy](./logs/val_acc_curves.svg)
 
 
 ## Search
