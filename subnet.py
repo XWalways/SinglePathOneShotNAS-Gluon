@@ -113,7 +113,8 @@ class ShuffleNetV2_OneShot(HybridBlock):
         x = self.output(x)
         return x
 
-
+# testing
+"""
 if __name__ == '__main__':
     can =(0, 0, 3, 1, 1, 1, 0, 0, 2, 0, 2, 1, 1, 0, 2, 0, 2, 1, 3, 2)
     scale_ids = [6, 5, 3, 5, 2, 6, 3, 4, 2, 5, 7, 5, 4, 6, 7, 4, 4, 5, 4, 3]
@@ -127,3 +128,4 @@ if __name__ == '__main__':
     #model.export('model')
     print(test_outputs)
     print(test_outputs.shape)
+"""

@@ -113,7 +113,8 @@ def get_channel_mask(channel_choice, stage_repeats, stage_out_channels, candidat
     channel_mask = nd.array(channel_mask).astype(dtype=dtype, copy=False)
     return channel_mask
 
-
+# tesing
+"""
 if __name__ == "__main__":
     import mxnet
     stage_repeats = [4, 8, 4, 4]
@@ -153,6 +154,6 @@ if __name__ == "__main__":
     #model.export('supernet')
     print(test_outputs.shape)
     print(test_outputs)
-
+"""
 
 

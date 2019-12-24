@@ -200,6 +200,8 @@ def get_cand_flops_params(cand, channels_idx):
     #print(model)
     return get_flops_params(model)
 
+#testing
+"""
 def main():
     for i in range(4):
         #cand = (2, 1, 0, 1, 2, 0, 2, 0, 2, 0, 2, 3, 0, 0, 0, 0, 3, 2, 3, 3)
@@ -208,7 +210,7 @@ def main():
 
 if __name__ == '__main__':
     main()
-
+"""
 
 
 
