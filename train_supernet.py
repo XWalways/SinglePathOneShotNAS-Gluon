@@ -377,17 +377,39 @@ def main():
             train_metric.reset()
             btic = time.time()
             get_random_cand = lambda x: tuple(np.random.randint(x) for i in range(20))
+
+            #Get random channel mask
+            if epoch < 10:
+                channel = (9,)*20#Firstly, train full supernet
+            elif epoch < 15:
+                channel = tuple(np.random.randint(2)+8 for i in range(20))#the channel choice is 8 ~ 9
+            elif epoch < 20:
+                channel = tuple(np.random.randint(3)+7 for i in range(20))#the channel choice is 7 ~ 9
+            elif epoch < 25:
+                channel = tuple(np.random.randint(4)+6 for i in range(20))#the channel choice is 6 ~ 9
+            elif epoch < 30:
+                channel = tuple(np.random.randint(5)+5 for i in range(20))#the channel choice is 5 ~ 9
+            elif epoch < 35:
+                channel = tuple(np.random.randint(6)+4 for i in range(20))#the channel choice is 4 ~ 9
+            elif epoch < 45:
+                channel = tuple(np.random.randint(7)+3 for i in range(20))#the channel choice is 3 ~ 9
+            elif epoch < 50:
+                channel = tuple(np.random.randint(8)+2 for i in range(20))#the channel choice is 2 ~ 9
+            elif epoch < 55:
+                channel = tuple(np.random.randint(9)+1 for i in range(20))#the channel choice is 1 ~ 9
+            else:
+                channel = tuple(np.random.randint(10) for i in range(20))#the channel choice is 0 ~ 9
+            print('Defined Channel Choice: ', channel)
+            channel_mask = get_channel_mask(channel, stage_repeats, stage_out_channels, candidate_scales,
+                                            dtype=opt.dtype)
+
             for i, batch in enumerate(train_data):
                 # Generate channel mask and random block choice
                 cand = get_random_cand(4)
                 print('Random Block Candidate: ', cand)
                 cand = nd.array(cand)
                 cand = cand.astype(opt.dtype, copy=False)
-                channel = (9,)*20
-                print('Defined Channel Choice: ', channel)
-                channel_mask = get_channel_mask(channel, stage_repeats, stage_out_channels, candidate_scales, dtype=opt.dtype)
                 #print(channel_mask)
-
                 data, label = batch_fn(batch, ctx)
                 if opt.mixup:
                     lam = np.random.beta(opt.mixup_alpha, opt.mixup_alpha)
@@ -446,8 +468,6 @@ def main():
             cand = get_random_cand(4)
             cand = nd.array(cand)
             cand = cand.astype(opt.dtype, copy=False)
-
-            channel = (9,)*20
             channel_mask = get_channel_mask(channel, stage_repeats, stage_out_channels, candidate_scales, dtype=opt.dtype)
 
             top1_val_acc, top5_val_acc = test(net, batch_fn, ctx, train_data, val_data, cand, channel_mask, update_images=20000, update_bn=False)

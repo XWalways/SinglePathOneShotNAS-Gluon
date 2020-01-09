@@ -298,7 +298,7 @@ class EvolutionSearcher(object):
         logger.info('random selecting ........')
         num = self.args.population_num
         cand_iter = self.stack_random_cand(
-            lambda: (tuple(np.random.randint(self.nr_state) for i in range(self.nr_layer)), (9,)*20)) #tuple(np.random.randint(self.channel_state) for i in range(self.nr_layer))
+            lambda: (tuple(np.random.randint(self.nr_state) for i in range(self.nr_layer)), tuple(np.random.randint(self.channel_state) for i in range(self.nr_layer)))
         while len(self.candidates) < num:
             cand = next(cand_iter)
             #print(cand)
@@ -326,7 +326,7 @@ class EvolutionSearcher(object):
             for i in range(self.nr_layer):
                 if np.random.random_sample() < m_prob:
                     cand[0][i] = np.random.randint(self.nr_state)
-                    cand[1][i] = 4 #np.random.randint(self.channel_state) # if you want to search number of channels
+                    cand[1][i] = np.random.randint(self.channel_state) # if you want to search number of channels
             return (tuple(cand[0]), tuple(cand[1]))
 
         cand_iter = self.stack_random_cand(random_func)
