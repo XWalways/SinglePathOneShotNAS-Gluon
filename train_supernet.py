@@ -468,7 +468,7 @@ def main():
             cand = get_random_cand(4)
             cand = nd.array(cand)
             cand = cand.astype(opt.dtype, copy=False)
-            channel_mask = get_channel_mask(channel, stage_repeats, stage_out_channels, candidate_scales, dtype=opt.dtype)
+            #channel_mask = get_channel_mask(channel, stage_repeats, stage_out_channels, candidate_scales, dtype=opt.dtype)
 
             top1_val_acc, top5_val_acc = test(net, batch_fn, ctx, train_data, val_data, cand, channel_mask, update_images=20000, update_bn=False)
             sw.add_scalar(tag='val_acc_curves', value=('valid_acc_value', top1_val_acc), global_step=epoch)
