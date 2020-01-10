@@ -129,6 +129,10 @@ def main():
     num_gpus = opt.num_gpus
     batch_size *= max(1, num_gpus)
     context = [mx.gpu(i) for i in range(num_gpus)] if num_gpus > 0 else [mx.cpu()]
+    for ctx in context:
+        mx.random.seed(seed_state=opt.random_seed, ctx=ctx)
+    np.random.seed(opt.random_seed)
+    random.seed(opt.random_seed)
     num_workers = opt.num_workers
     lr_decay = opt.lr_decay
     lr_decay_period = opt.lr_decay_period
