@@ -77,6 +77,8 @@ def parse_args():
                         help='starting warmup learning rate. default is 0.0.')
     parser.add_argument('--warmup-epochs', type=int, default=0,
                         help='number of warmup epochs.')
+    parser.add_argument('--random-seed', type=int, default=2,
+                        help='random seed (default: 2)')
 
     #-----------------------------------------------training tricks-------------------------------------------------
     parser.add_argument('--mixup', action='store_true',
@@ -160,7 +162,7 @@ def main():
         net.load_parameters(opt.resume_params, ctx = context)
 
     # Two functions for reading data from record file or raw images
-    def get_data_rec(rec_train, rec_train_idx, rec_val, rec_val_idx, batch_size, num_workers):
+    def get_data_rec(rec_train, rec_train_idx, rec_val, rec_val_idx, batch_size, num_workers, seed):
         rec_train = os.path.expanduser(rec_train)
         rec_train_idx = os.path.expanduser(rec_train_idx)
         rec_val = os.path.expanduser(rec_val)
@@ -202,6 +204,9 @@ def main():
             saturation          = jitter_param,
             contrast            = jitter_param,
             pca_noise           = lighting_param,
+            shuffle_chunk_seed  = seed,
+            seed                = seed,
+            seed_aug            = seed,
         )
         val_data = mx.io.ImageRecordIter(
             path_imgrec         = rec_val,
