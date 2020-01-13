@@ -14,6 +14,7 @@ from blocks import BatchNormNAS
 from mxboard import SummaryWriter
 import dali
 import os
+import random
 
 os.environ['MXNET_SAFE_ACCUMULATION'] = '1'
 #os.environ['MXNET_CUDNN_AUTOTUNE_DEFAULT'] = '0'
